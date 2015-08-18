@@ -1,38 +1,50 @@
 #!/usr/bin/python
-import json, urllib2, sys, getopt
+import urllib2, sys, getopt
+from flask import Flask, json, jsonify
+from collections import Counter
 
-def main():
-	try:
-		opts, args = getopt.getopt(sys.argv[1:], "n:a:")
+app = Flask(__name__)
 
-	except getopt.GetoptError as e:
-		print (str(e))
-		print ("Usage: %s -n teste_name -action action" % sys.argv[0])
-		sys.exit(2)
+@app.route('/info/<test_type>')
+def get_general_info(test_type):
+	test_report = get_last_test_report(test_type)
 
-	for o, a in opts:
-		if o == "-n":
-			testReport = getLastTestReport(a)	
+	fails = str(test_report['failCount'])
+	passes = str(test_report['passCount'])
 
-	fails = str(testReport['failCount'])
-	passes = str(testReport['passCount'])
+	return "passes: " + passes  + ", fails: " + fails
 
-	print "passes: " + passes  + ", fails: " + fails 
+@app.route('/top/<test_type>')
+def get_top_errors(test_type):
+	test_report = get_last_test_report(test_type)
+	counter = get_top_errors(test_report)
 
-def getLastTestReport(name):
-	urlSufix = "/api/json"
+	response = {}
+	return jsonify(counter.most_common(10))
 
-	url = getTestUrl(name)
-	runs = json.load(urllib2.urlopen(url + urlSufix))
+def get_last_test_report(name):
+	url_sufix = "/api/json"
+
+	url = get_test_url(name)
+	runs = json.load(urllib2.urlopen(url + url_sufix))
 	
 	for build in runs['builds']:
-		info = json.load(urllib2.urlopen(build['url'] + urlSufix))
+		info = json.load(urllib2.urlopen(build['url'] + url_sufix))
 		if info['building'] == False:
 			break
 
-	return json.load(urllib2.urlopen(info['url'] + "testReport" + urlSufix))
+	return json.load(urllib2.urlopen(info['url'] + "testReport" + url_sufix))
 
-def getTestUrl(name):
+def get_top_errors(test_report):
+	counter = Counter()
+	for class_name in test_report['suites']:
+		for test in class_name['cases']:
+			if test['status'] == "FAILED":
+				counter[test['errorDetails']] += 1
+
+	return counter
+
+def get_test_url(name):
 	if name == "api":
 		return "http://pagseguro.jenkins.srv.intranet/view/Testes%20de%20Integra%C3%A7%C3%A3o/job/TestesSeleniumApi"
 	if name == "backend":
@@ -49,5 +61,4 @@ def getTestUrl(name):
 		sys.exit("Usage: -n teste_name -action action")
 
 if __name__ == "__main__":
-	main()
-    
+	app.run(debug=True)    
